@@ -1,5 +1,7 @@
 require("dotenv").config();
 const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
 const PORT = 3000;
@@ -42,6 +44,19 @@ app.post("/webhook", async (req, res) => {
 
         console.log("Lead data from Meta:");
         console.log(JSON.stringify(lead, null, 2));
+
+
+        if (!response.ok || !lead.id) {
+            console.error("Graph API did not return a lead:", lead.error ?? lead);
+            return res.sendStatus(200);
+        }
+
+        // Send the lead to all connected React Native clients
+        wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(lead));
+            }
+        });
     } catch (error) {
         console.error("Failed to retrieve lead:", error);
     }
@@ -49,6 +64,18 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(200);
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+const wss = new WebSocket.Server({ server });
+
+wss.on("connection", (ws) => {
+    console.log("React Native client connected");
+
+    ws.on("close", () => {
+        console.log("React Native client disconnected");
+    });
+});
+
+server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
